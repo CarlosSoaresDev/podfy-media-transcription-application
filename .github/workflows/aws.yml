@@ -1,0 +1,88 @@
+name: Infra transcribe-application
+
+env:
+  service-name: service-podfy-media-transcribe-application
+  working-directory-test:  ./app/test/podfy-media-transcribe-application.test/
+  working-directory-build: ./app/src/podfy-media-transcribe-application/   
+  working-directory-root: ./ 
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@master 
+
+    - name: Setup .NET      
+      uses: actions/setup-dotnet@v3
+      with:
+       dotnet-version: 6.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore
+      working-directory: ${{env.working-directory-build}}    
+
+    - name: Build
+      run: dotnet build --no-restore
+      working-directory: ${{env.working-directory-build}}  
+
+    - name: Unit Test
+      run: dotnet test --no-build --verbosity normal
+      working-directory: ${{env.working-directory-test}}  
+
+  deploy:
+    name: Deploy       
+    runs-on: ubuntu-latest
+    needs: build
+    steps:  
+     - name: Checkout
+       uses: actions/checkout@master 
+
+     - name: root directory
+       run: ls -R
+       working-directory: ${{env.worker-directory-root}}         
+    
+     - name: Configure AWS credentials
+       id: credentialsaws
+       uses: aws-actions/configure-aws-credentials@v1
+       with:
+         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+         aws-region: ${{ secrets.AWS_REGION }}
+
+     - name: Create release
+       run: |
+          echo " ########## Start Publish Application ##########"
+          dotnet publish --no-self-contained --runtime linux-x64 -c Release -o ./artifact ./ 
+          echo " ########## Ended Publish Application ##########"
+       working-directory: ${{env.working-directory-build}}  
+
+     - name: zip release and send to s3
+       run: |
+          ls -R
+          echo " ########## Start ZIPING ##########"
+          zip -qq -r release.zip .
+          echo " ########## End ZIPING ##########"
+          ls -R
+          echo " ########## Start Send to S3 ##########"
+          aws s3 cp ./release.zip s3://lambda-aplication-repository/media-application/
+       working-directory: ${{env.working-directory-build}}/artifact
+
+     - name: AWS Deploy CloudFormation Stack
+       run: |
+           parameters=($(jq -r '.Parameters[] | [.ParameterKey, .ParameterValue] | "\(.[0])=\(.[1])"' ./infra/parameters.json)) 
+           echo ${parameters[@]}
+           aws cloudformation deploy \
+           --template-file ./infra/template.yaml \
+           --capabilities CAPABILITY_NAMED_IAM \
+           --parameter-overrides  ${parameters[@]} ApplicationName=${{env.service-name}} AccessKey=${{ secrets.AWS_ACCESS_KEY_ID }} SecretKey=${{ secrets.AWS_SECRET_ACCESS_KEY }} \
+           --stack-name ${{env.service-name}}  
+         

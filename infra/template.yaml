@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion : 2010-09-09
+Description: Up services to media transcribe application serverless [SG, SNS, lambda]
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  ApplicationName:
+    Type: String
+  BucketName:
+    Type: String
+  TopicName: 
+    Type: String
+  AccessKey:
+    Type: String
+  SecretKey:
+    Type: String
+  VPC:
+    Type: String
+  PrivateSubnetOne:
+    Type: String
+  PrivateSubnetTwo:
+    Type: String
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+    Runtime: dotnet6
+    CodeUri: s3://lambda-aplication-repository/transcribe-application/release.zip
+    VpcConfig:
+      SecurityGroupIds:
+        - !Ref ServerlessSecurityGroup
+      SubnetIds:
+        - !Ref PrivateSubnetOne
+        - !Ref PrivateSubnetTwo
+    Environment:
+        Variables:
+          ACCESS_KEY: !Ref AccessKey
+          SECRET_KEY: !Ref SecretKey
+          BUCKET_NAME: !Ref BucketName   
+
+Resources:
+  
+# -------------------------------------------------------------------------
+# Deploy SG EC2
+# -------------------------------------------------------------------------
+  ServerlessSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SecurityGroup for Serverless Functions
+      VpcId: !Ref VPC
+
+# -------------------------------------------------------------------------
+# Deploy SNS Topic and policy
+# -------------------------------------------------------------------------
+  TranscribeTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${TopicName}-topic'
+      TopicName: !Sub '${TopicName}-topic'
+      Subscription:
+        - Protocol: lambda
+          Endpoint: !GetAtt LambdaTranscribeFunction.Arn
+  
+  TranscribeTopicPolicy:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      Topics:
+        - !Ref TranscribeTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: 'sns:Publish'
+            Resource: !Ref TranscribeTopic
+            Principal:
+              AWS: '*'
+            Condition:
+              ArnLike:
+                AWS:SourceArn: !Sub 'arn:aws:*:*:${AWS::AccountId}:*'
+# -------------------------------------------------------------------------
+# Deploy Lambda Serverless and permission
+# -------------------------------------------------------------------------  
+  LambdaTranscribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ApplicationName}-transcribe'
+      Description: This lambda execute job to transcribe spech to text
+      Handler: podfy-media-transcribe-application::podfy_media_transcribe_application.Function::TranscribeFunctionHandlerAsync
+
+  LambdaFunctionInvokePermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref LambdaTranscribeFunction
+      Principal: sns.amazonaws.com   
+      SourceArn: !Ref TranscribeTopic
+
+  

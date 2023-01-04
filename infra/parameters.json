@@ -1,0 +1,24 @@
+{
+    "Parameters": [
+        {
+            "ParameterKey": "BucketName",
+            "ParameterValue": "podfy-transcribe-files"
+        },
+        {
+            "ParameterKey": "TopicName",
+            "ParameterValue": "podfy-transcribe-notify"
+        },
+        {
+            "ParameterKey": "VPC",
+            "ParameterValue": "vpc-0fec991dfa7b4c255"
+        },
+        {
+            "ParameterKey": "PrivateSubnetOne",
+            "ParameterValue": "subnet-0c3287bdab55d5c13"
+        },
+        {
+            "ParameterKey": "PrivateSubnetTwo",
+            "ParameterValue": "subnet-066e5a87699cdde99"
+        }
+    ]
+}
